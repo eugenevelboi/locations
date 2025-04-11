@@ -42,11 +42,15 @@ with st.sidebar.form("add_location"):
             pd.DataFrame([[new_location.strip(), new_priority]], columns=["Location", "Priority"])
         ]).drop_duplicates()
 
-# Delete locations
-remove_loc = st.sidebar.selectbox("Remove Location", ["-"] + st.session_state.location_master["Location"].tolist())
-if remove_loc != "-":
-    st.session_state.location_master = st.session_state.location_master[st.session_state.location_master["Location"] != remove_loc]
-    st.experimental_rerun()
+# Delete locations with confirmation
+with st.sidebar.expander("❌ Remove Location"):
+    selected_to_remove = st.selectbox("Pick location to remove", ["-"] + st.session_state.location_master["Location"].tolist())
+    if selected_to_remove != "-":
+        confirm_removal = st.checkbox("Are you sure you want to remove this location from the master list?")
+        if confirm_removal:
+            if st.button("Remove Location"):
+                st.session_state.location_master = st.session_state.location_master[st.session_state.location_master["Location"] != selected_to_remove]
+                st.experimental_rerun()
 
 # --- Manual Refresh Button ---
 if st.button("🔄 Refresh Sheets Now"):
