@@ -50,12 +50,12 @@ with st.sidebar.expander("❌ Remove Location"):
         if confirm_removal:
             if st.button("Remove Location"):
                 st.session_state.location_master = st.session_state.location_master[st.session_state.location_master["Location"] != selected_to_remove]
-                st.experimental_rerun()
+                st.rerun()
 
 # --- Manual Refresh Button ---
 if st.button("🔄 Refresh Sheets Now"):
     st.cache_data.clear()
-    st.experimental_rerun()
+    st.rerun()
 
 # --- Load Google Sheet Data ---
 @st.cache_data(ttl=60, show_spinner=False)
