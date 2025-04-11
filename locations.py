@@ -1,4 +1,12 @@
-import streamlit as st
+# This script requires the Streamlit package.
+# If you're seeing "ModuleNotFoundError: No module named 'streamlit'",
+# install it by running: pip install streamlit
+
+try:
+    import streamlit as st
+except ModuleNotFoundError:
+    raise ImportError("Streamlit is not installed. Please install it using 'pip install streamlit'.")
+
 import pandas as pd
 import requests
 from io import StringIO
@@ -14,14 +22,13 @@ middle_priority = ["London", "Bristol", "Manchester", "Cambridge", "Birmingham",
 
 low_priority = ["Montreal", "Waterloo", "Nouvelle-Aquitaine", "Grand Est", "Provence-Alpes-Côte d'Azur", "Gelderland", "Friesland", "Groningen / Drenthe / Flevoland / Zeeland", "Spain", "Western Australia", "South Australia", "Tasmania", "Singapore", "United Arab Emirates", "New Zealand", "Cape Town", "Japan", "Israel", "South Korea", "Hong Kong", "Taiwan", "Kansas", "New Mexico", "Nebraska", "West Virginia", "Idaho", "Hawaii", "New Hampshire", "Maine", "Rhode Island", "Montana", "Delaware", "Alaska", "North Dakota", "South Dakota", "Vermont", "Wyoming", "Iceland"]
 
-# Combine and initialize session state if not present
-if "location_master" not in st.session_state:
-    all_locations = (
-        [(loc, "Top") for loc in top_priority] +
-        [(loc, "Middle") for loc in middle_priority] +
-        [(loc, "Low") for loc in low_priority]
-    )
-    st.session_state.location_master = pd.DataFrame(all_locations, columns=["Location", "Priority"])
+# Always reload the master list on every rerun
+all_locations = (
+    [(loc, "Top") for loc in top_priority] +
+    [(loc, "Middle") for loc in middle_priority] +
+    [(loc, "Low") for loc in low_priority]
+)
+st.session_state.location_master = pd.DataFrame(all_locations, columns=["Location", "Priority"])
 
 # --- UI: Edit Location Master List ---
 st.sidebar.header("📋 Manage Master Location List")
@@ -41,8 +48,13 @@ if remove_loc != "-":
     st.session_state.location_master = st.session_state.location_master[st.session_state.location_master["Location"] != remove_loc]
     st.experimental_rerun()
 
+# --- Manual Refresh Button ---
+if st.button("🔄 Refresh Sheets Now"):
+    st.cache_data.clear()
+    st.experimental_rerun()
+
 # --- Load Google Sheet Data ---
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def load_sheet(url):
     res = requests.get(url)
     return pd.read_csv(StringIO(res.text))
@@ -52,8 +64,8 @@ connections_df = load_sheet(connections_url)
 
 # --- Collect only used (current + Pr. Location 1) ---
 used = pd.concat([
-    connections_df['Current'],
-    connections_df['Previous1']
+    connections_df['Current location'],
+    connections_df['Pr. Location 1']
 ], ignore_index=True).dropna().str.strip().unique()
 
 # --- Filter valid and available locations ---
