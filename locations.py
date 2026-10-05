@@ -9,19 +9,12 @@ except ModuleNotFoundError:
 
 import pandas as pd
 import requests
-from io import StringIO
-import csv
+from io import StringIO, BytesIO
+import openpyxl
 
 # --- Google Sheets CSV URLs ---
-locations_url = "https://docs.google.com/spreadsheets/d/1gJGJ_IGqybrN2C0O01uafzmJ43byKjGbAyi894hz2Lo/gviz/tq?tqx=out:csv&sheet=Locations"
+locations_xlsx_url = "https://docs.google.com/spreadsheets/d/1gJGJ_IGqybrN2C0O01uafzmJ43byKjGbAyi894hz2Lo/export?format=xlsx"
 connections_url = "https://docs.google.com/spreadsheets/d/1gJGJ_IGqybrN2C0O01uafzmJ43byKjGbAyi894hz2Lo/gviz/tq?tqx=out:csv&sheet=Connections"
-
-# --- Initial Clean Master List ---
-top_priority = ["Los Angeles Metro, CA", "San Diego Metro, CA", "San Jose Metro, CA", "San Francisco Bay, CA", "Greater Houston, TX", "San Antonio, TX Metro", "Dallas-Fort Worth Metroplex, TX", "Austin, TX Metro", "Miami-Fort Lauderdale Area, FL", "Greater Tampa Bay Area, FL", "Greater Orlando, FL", "Metro Jacksonville, FL", "Florida (excl. Miami, Fort Lauderdale, Tampa Bay, Orlando, Jacksonville)", "New York", "Pennsylvania", "Illinois", "Ohio", "Georgia", "North Carolina", "Washington", "Massachusetts", "New South Wales", "North Rhine-Westphalia", "Bavaria", "Baden-Württemberg", "Hesse", "Berlin", "Île-de-France", "South Holland", "North Holland", "North Brabant", "Belgium", "Sweden", "Austria", "Switzerland", "Denmark", "Finland", "Norway", "Ireland"]
-
-middle_priority = ["Texas (excl Houston, San Antonio, Dallas-Fort Worth, Austin)", "California (excl. LA, SD, SJ, SF)", "London", "Bristol", "Manchester", "Cambridge", "Birmingham", "New Jersey", "Virginia", "Michigan", "Arizona", "Tennessee", "Indiana", "Missouri", "Maryland", "Wisconsin", "Colorado", "Minnesota", "South Carolina", "Alabama", "Louisiana", "Kentucky", "Oregon", "Oklahoma", "Connecticut", "Utah", "Iowa", "Nevada", "Arkansas", "Mississippi", "Washington DC", "Queensland", "Victoria", "Lower Saxony / Rhineland-Palatinate / Saxony", "Schleswig-Holstein / Brandenburg / Saxony-Anhalt", "Thuringia / Hamburg / Mecklenburg-Vorpommern / Saarland / Bremen", "Auvergne-Rhône-Alpes", "Hauts-de-France", "Utrecht", "Overijssel", "Limburg", "Luxembourg", "Oxford / Reading / Surrey / Hampshire", "Edinburgh / Glasgow / Leeds / Belfast", "British Columbia", "Ontario", "Alberta"]
-
-low_priority = ["Montreal", "Nouvelle-Aquitaine", "Grand Est", "Provence-Alpes-Côte d'Azur", "Gelderland", "Friesland", "Groningen / Drenthe / Flevoland / Zeeland", "Western Australia", "South Australia", "Tasmania", "Singapore", "United Arab Emirates", "New Zealand", "Kansas", "New Mexico", "Nebraska", "West Virginia", "Idaho", "Hawaii", "New Hampshire", "Maine", "Rhode Island", "Montana", "Delaware", "Alaska", "North Dakota", "South Dakota", "Vermont", "Wyoming", "Iceland", "Occitanie", "Pays de la Loire / Brittany", "Jersey / Guernsey / Isle of Man / Gibraltar / Liechtenstein"]
 
 # --- Load Google Sheet Data ---
 @st.cache_data(ttl=60, show_spinner=False)
@@ -31,35 +24,33 @@ def load_sheet(url):
 
 @st.cache_data(ttl=60, show_spinner=False)
 def load_sheet_locations(url):
-    # The Locations tab is a grid: a warning row, a priority row, a country
-    # header row, then location names under each country column.
+    # Priority lives in the cell colour, which the CSV export drops, so read
+    # the xlsx export instead. Row 2 of the Locations tab is the colour key
+    # ("Top Priority" / "Middle Priority" / "Low Priority"); every location
+    # below the country header row takes the priority of its fill colour.
     res = requests.get(url)
     res.raise_for_status()
-    rows = list(csv.reader(StringIO(res.text)))[3:]
-    names = [cell.strip() for row in rows for cell in row if cell.strip()]
-    return list(dict.fromkeys(names))
-
-# The sheet is the source of truth for WHICH locations exist; the lists above
-# only assign priorities. A name added to the sheet but not to a list above
-# shows up as "Unassigned" until it is given a priority here.
-priority_of = {}
-for loc in top_priority:
-    priority_of[loc] = "Top"
-for loc in middle_priority:
-    priority_of[loc] = "Middle"
-for loc in low_priority:
-    priority_of[loc] = "Low"
+    ws = openpyxl.load_workbook(BytesIO(res.content))["Locations"]
+    legend = {}
+    for cell in ws[2]:
+        label = str(cell.value or "").strip()
+        if label.endswith(" Priority"):
+            legend[cell.fill.fgColor.rgb] = label[:-len(" Priority")]
+    found = {}
+    for row in ws.iter_rows(min_row=4):
+        for cell in row:
+            name = str(cell.value or "").strip()
+            if name and name not in found:
+                found[name] = legend.get(cell.fill.fgColor.rgb, "Unassigned")
+    return list(found.items())
 
 try:
-    sheet_locations = load_sheet_locations(locations_url)
+    all_locations = load_sheet_locations(locations_xlsx_url)
 except Exception as e:
-    sheet_locations = []
-    st.warning(f"Could not read the Locations sheet ({e}); using the built-in list.")
-if not sheet_locations:
-    sheet_locations = list(priority_of)
+    st.error(f"Could not read the Locations sheet: {e}")
+    st.stop()
 
 # Always reload the master list on every rerun
-all_locations = [(loc, priority_of.get(loc, "Unassigned")) for loc in sheet_locations]
 st.session_state.location_master = pd.DataFrame(all_locations, columns=["Location", "Priority"])
 
 # --- UI: Edit Location Master List ---
