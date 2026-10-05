@@ -50,30 +50,7 @@ except Exception as e:
     st.error(f"Could not read the Locations sheet: {e}")
     st.stop()
 
-# Always reload the master list on every rerun
-st.session_state.location_master = pd.DataFrame(all_locations, columns=["Location", "Priority"])
-
-# --- UI: Edit Location Master List ---
-st.sidebar.header("📋 Manage Master Location List")
-with st.sidebar.form("add_location"):
-    new_location = st.text_input("Add New Location")
-    new_priority = st.selectbox("Priority", ["Top", "Middle", "Low"])
-    submitted = st.form_submit_button("Add Location")
-    if submitted and new_location:
-        st.session_state.location_master = pd.concat([
-            st.session_state.location_master,
-            pd.DataFrame([[new_location.strip(), new_priority]], columns=["Location", "Priority"])
-        ]).drop_duplicates()
-
-# Delete locations with confirmation
-with st.sidebar.expander("❌ Remove Location"):
-    selected_to_remove = st.selectbox("Pick location to remove", ["-"] + st.session_state.location_master["Location"].tolist())
-    if selected_to_remove != "-":
-        confirm_removal = st.checkbox("Are you sure you want to remove this location from the master list?")
-        if confirm_removal:
-            if st.button("Remove Location"):
-                st.session_state.location_master = st.session_state.location_master[st.session_state.location_master["Location"] != selected_to_remove]
-                st.rerun()
+master_df = pd.DataFrame(all_locations, columns=["Location", "Priority"])
 
 # --- Manual Refresh Button ---
 if st.button("🔄 Refresh Sheets Now"):
@@ -89,7 +66,6 @@ used = pd.concat([
 ], ignore_index=True).dropna().str.strip().unique()
 
 # --- Filter valid and available locations ---
-master_df = st.session_state.location_master
 valid_locations = master_df[~master_df["Location"].isin(used)]
 
 # --- Group and display ---
